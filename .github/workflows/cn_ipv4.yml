@@ -11,9 +11,11 @@ jobs:
     runs-on: ubuntu-latest  # 使用Ubuntu环境
     
     steps:
-      # 步骤1：检出仓库代码
+      # 步骤1：检出仓库代码，使用PAT授权
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT }}  # 引用仓库中名为PAT的Secret，需提前在仓库Secrets中配置好Personal Access Token
       
       # 步骤2：设置脚本并执行
       - name: 执行数据获取脚本
