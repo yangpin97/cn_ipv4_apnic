@@ -1,0 +1,92 @@
+name: 自动获取APNIC中国IPv4数据
+
+# 触发条件：每天UTC时间0点执行，也可手动触发
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 每天UTC时间0点运行
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  fetch-cn-ipv4:
+    runs-on: ubuntu-latest  # 使用Ubuntu环境
+    
+    steps:
+      # 步骤1：检出仓库代码
+      - name: 检出代码
+        uses: actions/checkout@v4
+      
+      # 步骤2：设置脚本并执行
+      - name: 执行数据获取脚本
+        run: |
+          # 创建脚本文件
+          cat > cn_ipv4_apnic.sh << 'EOF'
+          #!/bin/bash
+          
+          # 下载文件
+          wget -O delegated-apnic-latest http://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest
+          
+          # 提取相关行
+          grep 'apnic|CN|ipv4|' delegated-apnic-latest > cn-ipv4-1.txt
+          rm -f delegated-apnic-latest
+          
+          # 处理文件格式
+          awk -F'|' '{print $4 "|" $5}' cn-ipv4-1.txt > cn-ipv4-2.txt
+          rm -f cn-ipv4-1.txt
+          
+          # 生成CIDR前缀表示
+          sed -e 's/|256/\/24/g' \
+              -e 's/|512/\/23/g' \
+              -e 's/|1024/\/22/g' \
+              -e 's/|2048/\/21/g' \
+              -e 's/|4096/\/20/g' \
+              -e 's/|8192/\/19/g' \
+              -e 's/|16384/\/18/g' \
+              -e 's/|32768/\/17/g' \
+              -e 's/|65536/\/16/g' \
+              -e 's/|131072/\/15/g' \
+              -e 's/|262144/\/14/g' \
+              -e 's/|524288/\/13/g' \
+              -e 's/|1048576/\/12/g' \
+              -e 's/|2097152/\/11/g' \
+              -e 's/|4194304/\/10/g' \
+              cn-ipv4-2.txt > cn-ipv4-cidr.txt
+          
+          # 生成子网掩码表示
+          sed -e 's/|256/ 255.255.255.0/g' \
+              -e 's/|512/ 255.255.254.0/g' \
+              -e 's/|1024/ 255.255.252.0/g' \
+              -e 's/|2048/ 255.255.248.0/g' \
+              -e 's/|4096/ 255.255.240.0/g' \
+              -e 's/|8192/ 255.255.224.0/g' \
+              -e 's/|16384/ 255.255.192.0/g' \
+              -e 's/|32768/ 255.255.128.0/g' \
+              -e 's/|65536/ 255.255.0.0/g' \
+              -e 's/|131072/ 255.254.0.0/g' \
+              -e 's/|262144/ 255.252.0.0/g' \
+              -e 's/|524288/ 255.248.0.0/g' \
+              -e 's/|1048576/ 255.240.0.0/g' \
+              -e 's/|2097152/ 255.224.0.0/g' \
+              -e 's/|4194304/ 255.192.0.0/g' \
+              cn-ipv4-2.txt > cn-ipv4-mask.txt
+          
+          # 删除中间文件
+          rm -f cn-ipv4-2.txt
+          EOF
+          
+          # 赋予执行权限并运行脚本
+          chmod +x cn_ipv4_apnic.sh
+          ./cn_ipv4_apnic.sh
+      
+      # 步骤3：提交更新到仓库
+      - name: 提交更改
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add cn-ipv4-cidr.txt cn-ipv4-mask.txt
+          # 检查是否有更改
+          if git diff --staged --quiet; then
+              echo "没有数据更新"
+          else
+              git commit -m "自动更新APNIC中国IPv4数据: $(date +'%Y-%m-%d')"
+              git push origin main
+          fi
